@@ -110,7 +110,7 @@ files = [os.path.join(dp, x) for dp, _, fs in os.walk(os.path.join(tmp, 'data', 
 rows = read_jsonl_gz(files[0])
 kinds = {k: sum(1 for x in rows if x['kind'] == k) for k in ('meta', 'transfer', 'curve_internal', 'detail')}
 check('RH raw: 1500 transfers, 1399 internal, uncovered hashes -> details (capped 50)', kinds == {'meta': 1, 'transfer': 1500, 'curve_internal': 1399, 'detail': 50}, kinds)
-check('RH curve detected', rows[0]['curve'] == '0xcurve' and rows[0]['truncated'])
+check('RH curve detected', rows[0]['curve'] == '0xcurve' and rows[0]['details_capped'] and not rows[0]['truncated'])
 # budget stop
 s.http.budget.limit = s.http.budget.used()
 s.st.put('sol_last_hour_done', None)

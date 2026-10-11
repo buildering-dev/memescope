@@ -14,21 +14,22 @@ Launchpads print tens of thousands of tokens a day. The public narrative is "som
 - launchpads, wallets and explorers can plug in a reproducible insider score;
 - researchers get a clean, versioned dataset instead of screenshots.
 
-## What the first days show (6–8 Oct 2026, 390 Solana + 109 Robinhood Chain launches)
+## What the data shows so far (6–10 Oct 2026, 1,161 Solana + 462 Robinhood Chain launches)
 
 | Metric (Solana, pump.fun) | Value |
 |---|---|
-| Launches with a bundled first block (≥2 non-creator wallets buying in the creation slot) | 23.6% |
-| Launches with a coordinated dump (≥3 early buyers selling within 5 s) | 33.6% |
-| Creators that sold their entire position | 70.8% |
+| Launches with a bundled first block (≥2 non-creator wallets buying in the creation slot) | 24.1% |
+| Launches with a coordinated dump (≥3 early buyers selling within 5 s) | 34.3% |
+| Creators that sold their entire position | 66.9% |
 | Median distinct wallets per token | 3 |
-| Share of realised profit taken by insiders (creator / bundle / linked / coordinated / wash), by launch day | 59–83% |
-| Independent wallets (no insider flag) with ≥1 closed position that are net profitable | 20.1% |
-| Median realised P&L of an independent wallet | −0.018 SOL |
+| Share of realised profit taken by insiders (creator / bundle / linked / coordinated / wash), by launch day | 74–86% (80.8% overall) |
+| Launches where insiders handed tokens to fresh wallets that then sold (transfer clusters) | 12.2% (2,818 wallets) |
+| Independent wallets (no insider flag) with ≥1 closed position that are net profitable | 16.1% |
+| Median realised P&L of an independent wallet | −0.014 SOL |
 
-Robinhood Chain (Pons) looks different so far: 5.5% bundled launches, 15.6% coordinated dumps, 45% of creators exit fully, median 4 wallets per token. ETH flows there are approximate (see METHOD), so profit shares are not reported yet.
+Robinhood Chain (Pons) looks different: 3.0% bundled launches, 19.5% coordinated dumps, 50% of creators exit fully, median 4 wallets per token. ETH flows there are approximate (see METHOD), so profit shares are not reported yet.
 
-Every number above is recomputed nightly by `analyze.py` from the raw files, with definitions fixed in advance (`docs/METHOD.md`). Nothing is hand-curated.
+Every number above is recomputed nightly by `analyze.py` from the raw files, with definitions fixed in advance (`docs/METHOD.md`). Nothing is hand-curated. Changes made after launch are listed with dates in `docs/METHOD.md §7`; the most important (v5, 11 Oct) groups wallets that receive tokens for free from another wallet, because insiders were spreading tokens to fresh wallets whose sales looked like independent profit.
 
 ## Pre-registered test: do "smart money" wallets persist?
 
@@ -71,7 +72,7 @@ Linux/macOS: `python collect.py`, `python analyze.py`. Python ≥3.11, no depend
 
 ## Honesty notes
 
-- Four launch days of data at submission time. The headline numbers will move; the method won't.
+- Five full launch days of data so far. The headline numbers will move; the method changes only through dated, documented filters (METHOD §7).
 - Robinhood Chain profit attribution is approximate until router decoding lands.
 - Sampling is random, 12/hour: good for population statistics, not for looking up an arbitrary token (yet).
 

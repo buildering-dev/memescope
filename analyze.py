@@ -18,6 +18,7 @@ Definitions (fixed in advance, see claude/research-memecoin-profit-forensics-202
   - creator-linked wallet (traced tokens only): funded by the creator, or shares a non-hub funder within 3 hops with the creator.
   - insider (for the persistence test): creator, creation-slot buyer, creator-linked, coordinated-dump member or wash wallet in ANY token.
   - realised P&L: sum of d_sol for wallets whose token position is closed (sold >=99% of tokens bought); open positions are excluded.
+  - transfer cluster (v5, 11 Oct): wallets joined by unpaid token transfers count as one wallet (the first one seen) per token.
 """
 import csv, datetime as dt, glob, gzip, io, json, math, os, random, sqlite3, sys, time
 
@@ -26,7 +27,20 @@ DATA = os.path.join(ROOT, 'data')
 OUT = os.path.join(ROOT, 'analysis')
 WSOL = 'So11111111111111111111111111111111111111112'
 LAMPORTS = 1e9
-VERSION = 3   # bump to force a full re-parse when parsing logic changes
+VERSION = 5   # bump to force a full re-parse when parsing logic changes (4 = 10 Oct data-quality filters, 5 = 11 Oct transfer clusters)
+# Data-quality filters (10 Oct 2026, added before any persistence-test result exists; see README 'Data-quality filters'):
+#  1) a Solana trade whose implied price is above MAX_SOL_PER_TOKEN (= a 10M-SOL valuation on a 1B supply) is not a real
+#     trade of this token (the fee payer's SOL change came from something else in the same transaction) -> dropped;
+#  2) truncated histories (the earliest max_tx_per_token txs only) give wrong P&L -> such tokens still count for the
+#     launch-structure metrics (bundles, snipers, dumps) but are left out of every P&L number, the wallet table and the test.
+MAX_SOL_PER_TOKEN = 0.01
+#  3) (11 Oct 2026, still before any persistence-test result) tokens moved wallet-to-wallet without payment are not trades.
+#     A Solana tx in which, among non-pool owners, one wallet's token balance falls and another's rises by the same total
+#     (tokens conserved, so no pool took part) while no wallet's SOL moves by more than TRANSFER_SOL_EPS is a plain transfer. Wallets joined by such transfers are one economic entity
+#     (cluster) for the token: the transfer rows are dropped and every member's trades are booked to the cluster's first
+#     wallet. Without this, a buyer that pays 1,370 SOL and spreads the tokens to fresh wallets that then sell shows up as one
+#     huge insider loss plus "independent" winners with zero cost basis (found on pump.fun token 6F7tJ..., 9 Oct).
+TRANSFER_SOL_EPS = 0.01
 
 
 def log(msg):
@@ -154,6 +168,44 @@ def sol_trades(txs, mint):
     return out, n_touch, zero_net
 
 
+def merge_transfers(tr, eps=TRANSFER_SOL_EPS):
+    """Filter 3: drop wallet-to-wallet token transfers and book cluster members' trades to the cluster's first wallet.
+    tr rows: (slot, ts, idx, wallet, d_tok, d_sol), sorted. Returns (rows, n_wallets_merged)."""
+    groups = {}
+    for i, r in enumerate(tr):
+        groups.setdefault((r[0], r[2]), []).append(i)
+    parent, first_seen = {}, {}
+    for i, r in enumerate(tr):
+        first_seen.setdefault(r[3], i)
+
+    def find(x):
+        while parent.get(x, x) != x:
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            if first_seen[rb] < first_seen[ra]:
+                ra, rb = rb, ra
+            parent[rb] = ra
+    drop = set()
+    for ids in groups.values():
+        rows = [tr[i] for i in ids]
+        if (len(rows) >= 2 and all(abs(r[5]) < eps for r in rows)
+                and any(r[4] < 0 for r in rows) and any(r[4] > 0 for r in rows)
+                and abs(sum(r[4] for r in rows)) <= 1e-6 * max(abs(r[4]) for r in rows)):   # tokens conserved: no pool leg
+            ws = [r[3] for r in rows]
+            for w in ws[1:]:
+                union(ws[0], w)
+            drop.update(ids)
+    merged = sum(1 for w in first_seen if find(w) != w)
+    if not drop and not merged:
+        return tr, 0
+    out = [(r[0], r[1], r[2], find(r[3]), r[4], r[5]) for i, r in enumerate(tr) if i not in drop]
+    return out, merged
+
+
 def parse_token_common(tr, creator, created, max_buy_rank=20):
     """tr: list of (slot_or_block, ts, idx, wallet, d_tok, d_quote). Returns token summary + per-wallet rows."""
     if not tr:
@@ -213,11 +265,16 @@ def parse_sol_token(path, superseded):
     if mint in superseded:
         return None
     tr, n_touch, zero_net = sol_trades([r['tx'] for r in rows if r.get('kind') == 'tx'], mint)
+    n_raw = len(tr)
+    tr = [x for x in tr if not (x[4] and abs(x[5]) / abs(x[4]) > MAX_SOL_PER_TOKEN)]
+    n_dropped = n_raw - len(tr)
+    tr, merged = merge_transfers(tr)                      # filter 3: transfer clusters
     res = parse_token_common(tr, m.get('creator'), m.get('created'))
     if not res:
         return None
     tok, wallets = res
-    tok.update({'n_touch_tx': n_touch, 'zero_net_tx': zero_net, 'pct_zero_net_tx': round(100.0 * zero_net / n_touch, 1) if n_touch else None})
+    tok.update({'n_touch_tx': n_touch, 'zero_net_tx': zero_net, 'pct_zero_net_tx': round(100.0 * zero_net / n_touch, 1) if n_touch else None,
+                'dropped_trades': n_dropped, 'transfer_merged': merged})
     tok.update({'chain': 'sol', 'token': mint, 'creator': m.get('creator'), 'truncated': bool(m.get('truncated')),
                 'day': path.replace('\\', '/').split('/')[-2]})
     return tok, wallets
@@ -347,11 +404,12 @@ def run():
             tokens[chain].append(tok)
             for w in wallets:
                 w['token'] = tok['token']; w['day'] = tok['day']
-            wallet_rows[chain].extend(wallets)
+            if not tok.get('truncated'):           # filter 2: no P&L from truncated histories
+                wallet_rows[chain].extend(wallets)
         n_new += 0
     # ---------------- token tables
     cols = ['chain', 'day', 'token', 'creator', 'created', 'n_touch_tx', 'zero_net_tx', 'n_trades', 'n_wallets', 'buy_volume', 'bundle_n', 'sniper_n', 'coord_max',
-            'wash_n', 'creator_bought', 'creator_net_q', 'creator_sold_all', 'traced', 'early10_linked', 'truncated']
+            'wash_n', 'creator_bought', 'creator_net_q', 'creator_sold_all', 'traced', 'early10_linked', 'truncated', 'dropped_trades', 'transfer_merged']
     for chain in ('sol', 'rh'):
         with open(os.path.join(OUT, f'tokens_{chain}.csv'), 'w', newline='', encoding='utf-8') as f:
             wr = csv.writer(f); wr.writerow(cols)
@@ -363,6 +421,7 @@ def run():
         days = sorted({t['day'] for t in tokens[chain]})
         for d in days:
             T = [t for t in tokens[chain] if t['day'] == d]
+            Tp = [t for t in T if not t.get('truncated')]      # filter 2: P&L metrics on complete histories only
             W = [w for w in wallet_rows[chain] if w['day'] == d and w['closed']]
             tot_pos = sum(w['net_q'] for w in W if w['net_q'] > 0)
             def prof(pred):
@@ -376,8 +435,9 @@ def run():
                 'median_trades': median([t['n_trades'] for t in T]),
                 'pct_bundled_launch': pct(sum(1 for t in T if t['bundle_n'] >= 2), len(T)),
                 'pct_creator_sold_all': pct(sum(1 for t in T if t['creator_sold_all']), len(T)),
-                'pct_creator_profitable': pct(sum(1 for t in T if (t['creator_net_q'] or 0) > 0), len(T)),
-                'median_creator_net': median([t['creator_net_q'] for t in T]),
+                'pct_creator_profitable': pct(sum(1 for t in Tp if (t['creator_net_q'] or 0) > 0), len(Tp)),
+                'median_creator_net': median([t['creator_net_q'] for t in Tp]),
+                'truncated_tokens': len(T) - len(Tp),
                 'pct_coordinated_dump': pct(sum(1 for t in T if t['coord_max'] >= 3), len(T)),
                 'pct_with_wash_wallets': pct(sum(1 for t in T if t['wash_n'] > 0), len(T)),
                 'zero_net_tx_share': pct(sum(t.get('zero_net_tx') or 0 for t in T), sum(t.get('n_touch_tx') or 0 for t in T)) if chain == 'sol' else None,

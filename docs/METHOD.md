@@ -37,3 +37,11 @@ For ~35 % of tokens at random plus every token where one wallet took out ≥ 5 S
 - Hubs break trails: funding via a CEX hot wallet is recorded as "hub", not resolved.
 - Bonding-curve-only history on Solana; post-graduation DEX trading is included only where the token's own account is touched.
 - Robinhood Chain wallets are frequently EIP-7702 delegated; they are treated as normal wallets.
+
+## 7. Data-quality filters (added after launch, before any persistence-test result)
+- **10 Oct 2026, implausible Solana "trades" dropped:** a row whose implied price is above 0.01 SOL per token (a 10M-SOL valuation on a 1B supply) is not a real trade of the token; the fee payer's SOL change came from something else in the same transaction. Counted per token in `dropped_trades`.
+- **10 Oct 2026, truncated histories left out of P&L:** a token cut at `max_tx_per_token` still counts for bundles, snipers and coordinated dumps (its earliest transactions are complete) but not for creator profitability, profit shares, the wallet table or the persistence test. `daily_metrics.csv` reports `truncated_tokens` per day.
+- **11 Oct 2026, transfer clusters (`analyze.py` v5):** tokens moved wallet-to-wallet without payment are not trades. A Solana transaction in which, among non-pool owners, token balances move between wallets with the total conserved and no wallet's SOL changing by more than 0.01 SOL is a plain transfer. Wallets joined by such transfers count as one entity per token (booked to the first wallet seen), and the transfer rows are dropped. Found on pump.fun token `6F7tJtaX…pump` (9 Oct): the creator and a creation-slot buyer paid ~1,456 SOL, then sent the tokens to ~100 fresh wallets that sold them. Without clustering, that showed as a 1,370-SOL insider "loss" plus ~1,440 SOL of "independent" profit with zero cost basis; with clustering the insider group nets −15 SOL and real outside profit on the token is 1.5 SOL. Counted per token in `transfer_merged`.
+- **Robinhood Chain:** `truncated` means token transfers or curve internals were cut; hitting the per-tx detail cap is recorded separately as `details_capped` (only router-paid ETH amounts are missing; RH P&L is approximate anyway).
+
+The persistence test's decision rule itself is unchanged.

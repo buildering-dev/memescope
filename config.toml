@@ -41,11 +41,11 @@ factories = [
   { address = "0x7ed598bcef8bd9edd8c97a195c6d13f40801ec7e", topic0 = "0x8d4aad4953d0ca700d468f3753aa14432d1b35b43ec6409f051fb6aa43a89607", src = "bitquery v2" },
   { address = "0xA5aAb3F0c6EeadF30Ef1D3Eb997108E976351feB", topic0 = "0xdb51ea9ad51ab453a65a4cb7e60c3cb378c9501bb002609f8f97778fb6c4235a", src = "mobula active" },
 ]
-sample_per_hour = 12
+sample_per_hour = 9             # was 12 (10 Oct): the 70k/day budget buys ~270 tokens/day at the cap below, so 9/h (216/day) also drains the backlog
 min_age_hours = 6
 max_age_hours = 30
 max_transfers_per_token = 5000
-max_graduated_tx_details = 50    # per-tx lookups after graduation (Uniswap v4), capped. Was 300: each lookup costs 60 credits, so 3 big tokens/day ate ~54k of the 70k budget and the RH queue grew ~200/day (9 Oct)
+max_graduated_tx_details = 10    # per-tx lookups (60 credits each) for txs the curve's internal list doesn't cover. 300 -> 50 (9 Oct) -> 10 (10 Oct): measured 10 Oct, mean 550 credits/token at 50 vs ~260 at 10 (median token uses 1 lookup). Only ETH amounts of router-paid trades are lost (RH P&L is approximate anyway); token flows are complete
 detail_workers = 6               # lookups in flight at once (REST is slow per call; rps cap above still applies)
 fetch_per_pass = 40
 rest = "https://api.blockscout.com/4663/api/v2/"

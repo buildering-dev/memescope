@@ -144,7 +144,8 @@ class RH:
             day = time.strftime('%Y%m%d', time.gmtime(created))
             write_jsonl_gz(os.path.join(self.dir, 'raw_rh', day, f'{token}.jsonl.gz'),
                            [{'kind': 'meta', 'token': token, 'created': created, 'deployer': deployer, 'launch_tx': ref, 'curve': curve,
-                             'truncated': trunc or trunc_i or len(other) > R['max_graduated_tx_details'], 'details_error': derr, 'fetched': int(time.time())}]
+                             'truncated': trunc or trunc_i, 'details_capped': len(other) > R['max_graduated_tx_details'],
+                             'details_error': derr, 'fetched': int(time.time())}]
                            + [{'kind': 'transfer', 'r': t} for t in transfers]
                            + [{'kind': 'curve_internal', 'r': i} for i in internal]
                            + [{'kind': 'detail', 'r': d} for d in details])

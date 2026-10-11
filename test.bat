@@ -1,5 +1,5 @@
 @echo off
 cd /d "%~dp0"
 title memescope self-test
-where py >nul 2>nul && (py tests\test_offline.py & py tests\test_trace.py) || (python tests\test_offline.py & python tests\test_trace.py)
+where py >nul 2>nul && (py tests\test_offline.py & py tests\test_trace.py & py tests\test_transfers.py) || (python tests\test_offline.py & python tests\test_trace.py & python tests\test_transfers.py)
 pause
